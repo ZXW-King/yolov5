@@ -8,7 +8,6 @@ import numpy as np
 import torch
 import yaml
 from tqdm import tqdm
-import utils.keypoint_scores
 
 from models.experimental import attempt_load
 from utils.plate_datasets import create_dataloader
@@ -19,7 +18,85 @@ from utils.plots import plot_images, output_to_target, plot_study_txt
 from utils.torch_utils import select_device, time_synchronized
 
 
-def test(data,
+from utils.plate_loss import ComputePlateLoss
+import cv2
+import math
+def get_ther(landmarkspoints,class_num):
+    class_num = int(class_num)
+    if class_num >5:
+        pMax = ((landmarkspoints[0][0]+landmarkspoints[1][0])/2 ,(landmarkspoints[0][1]+landmarkspoints[1][1])/2)
+        pMin = ((landmarkspoints[2][0] +landmarkspoints[3][0])/2 ,(landmarkspoints[2][1]+landmarkspoints[3][1])/2)
+    elif class_num >1 :
+        pMin = ((landmarkspoints[0][0]+landmarkspoints[1][0])/2 ,(landmarkspoints[0][1]+landmarkspoints[1][1])/2)
+        pMax = ((landmarkspoints[2][0] +landmarkspoints[3][0])/2 ,(landmarkspoints[2][1]+landmarkspoints[3][1])/2)
+
+    # x, y = pMax[0] - pMin[0], pMin[1] - pMax[1]
+    x, y = pMin[0] - pMax[0], pMax[1] - pMin[1]
+    ther = math.atan2(x, y)
+
+    return int(ther / math.pi * 180 )
+def warpimage(img, pts1):
+    # right_bottom, left_bottom, left up , left_up
+    #pts1 = np.float32([[56,65],[368,52],[28,387],[389,390]])
+    pts2 = np.float32([[400,200],[0,200],[0,0],[400,0]])
+    h, w ,c = img.shape
+    M = cv2.getPerspectiveTransform(pts1,pts2)
+    dst = cv2.warpPerspective(img,M,(400,200))
+    return dst
+def show_results(img, xywh, conf, landmarks, class_num):
+    h,w,c = img.shape
+    tl = 2 or round(0.002 * (h + w) / 2) + 1  # line/font thickness
+    x1 = int(xywh[0] * w - 0.5 * xywh[2] * w)
+    y1 = int(xywh[1] * h - 0.5 * xywh[3] * h)
+    x2 = int(xywh[0] * w + 0.5 * xywh[2] * w)
+    y2 = int(xywh[1] * h + 0.5 * xywh[3] * h)
+    cv2.rectangle(img, (x1,y1), (x2, y2), (0,255,0), thickness=tl, lineType=cv2.LINE_AA)
+
+    clors = [(255,0,0),(0,255,0),(0,0,255),(255,255,0),(0,255,255)]
+    landmarkspoints = []
+    for i in range(4):
+        point_x = int(landmarks[2 * i] * w)
+        point_y = int(landmarks[2 * i + 1] * h)
+        cv2.circle(img, (point_x, point_y), tl+1, clors[i], -1)
+        landmarkspoints.append([point_x, point_y])
+
+    mask = np.zeros((h, w, c), dtype=np.uint8)
+
+    cv2.fillConvexPoly(mask, np.array(landmarkspoints), (0, 100, 255))   # 绘制 地面投影
+    img = cv2.addWeighted(img, 1, mask, 0.5, 0)
+
+    ther = get_ther(landmarkspoints,class_num)
+
+
+    tf = max(tl - 1, 1)  # font thickness
+    # label = str(int(class_num)) + ': ' + str(conf)[:5] + '&:' +str(ther)
+    label = str(int(class_num)) + ': ' + str(conf)[:5]
+    print( 'label', str(int(class_num)) + ': ' + str(conf)[:5] + ' 航向角:' +str(ther))
+    cv2.putText(img, label, (x1, y1 - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
+    return img
+def scale_coords_landmarks(img1_shape, coords, img0_shape, ratio_pad=None):
+    # Rescale coords (xyxy) from img1_shape to img0_shape
+    if ratio_pad is None:  # calculate from img0_shape
+        gain = min(img1_shape[0] / img0_shape[0], img1_shape[1] / img0_shape[1])  # gain  = old / new
+        pad = (img1_shape[1] - img0_shape[1] * gain) / 2, (img1_shape[0] - img0_shape[0] * gain) / 2  # wh padding
+    else:
+        gain = ratio_pad[0][0]
+        pad = ratio_pad[1]
+
+    coords[:, [0, 2, 4, 6]] -= pad[0]  # x padding
+    coords[:, [1, 3, 5, 7]] -= pad[1]  # y padding
+    coords[:, :8] /= gain
+    #clip_coords(coords, img0_shape)
+    coords[:, 0].clamp_(0, img0_shape[1])  # x1
+    coords[:, 1].clamp_(0, img0_shape[0])  # y1
+    coords[:, 2].clamp_(0, img0_shape[1])  # x2
+    coords[:, 3].clamp_(0, img0_shape[0])  # y2
+    coords[:, 4].clamp_(0, img0_shape[1])  # x3
+    coords[:, 5].clamp_(0, img0_shape[0])  # y3
+    coords[:, 6].clamp_(0, img0_shape[1])  # x4
+    coords[:, 7].clamp_(0, img0_shape[0])  # y4
+    return coords
+def val(data,
          weights=None,
          batch_size=32,
          imgsz=640,
@@ -40,6 +117,7 @@ def test(data,
          compute_loss=None,
          half_precision=True,
          is_coco=False):
+    print(batch_size)
     # Initialize/load model and set device
     training = model is not None
     if training:  # called by train.py
@@ -50,8 +128,8 @@ def test(data,
         device = select_device(opt.device, batch_size=batch_size)
 
         # Directories
-        # save_dir = increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok)  # increment run
-        # (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
+        save_dir = increment_path(Path(opt.project) / opt.name, exist_ok=opt.exist_ok)  # increment run
+        (save_dir / 'labels' if save_txt else save_dir).mkdir(parents=True, exist_ok=True)  # make dir
 
         # Load model
         model = attempt_load(weights, map_location=device)  # load FP32 model
@@ -90,6 +168,7 @@ def test(data,
         # dataloader = create_dataloader(data[task], imgsz, batch_size, gs, opt, pad=0.5, rect=True,
         #                                prefix=colorstr(f'{task}: '))[0]
         print('test ')
+        print(batch_size)
         dataloader = create_dataloader(data[task], imgsz, batch_size, gs, opt, pad=0.5, rect=False,
                                        prefix=colorstr(f'{task}: '))[0]
 
@@ -99,47 +178,58 @@ def test(data,
     coco91class = coco80_to_coco91_class()
     s = ('%20s' + '%12s' * 6) % ('Class', 'Images', 'Labels', 'P', 'R', 'mAP@.5', 'mAP@.5:.95')
     p, r, f1, mp, mr, map50, map, t0, t1 = 0., 0., 0., 0., 0., 0., 0., 0., 0.
-    loss = torch.zeros(3, device=device)
+    # loss = torch.zeros(3, device=device)
+    loss = torch.zeros(5, device=device)
     jdict, stats, ap, ap_class, wandb_images = [], [], [], [], []
     for batch_i, (img, targets, paths, shapes) in enumerate(tqdm(dataloader, desc=s)):
         img = img.to(device, non_blocking=True)
         img = img.half() if half else img.float()  # uint8 to fp16/32
         img /= 255.0  # 0 - 255 to 0.0 - 1.0
-        targets = targets.to(device)
+        targets = targets.to(device)     #  标签  shape -> (labels,14)    14: 0 class xywh 4*ppint
         nb, _, height, width = img.shape  # batch size, channels, height, width
 
         with torch.no_grad():
             # Run model
             t = time_synchronized()
-            out, train_out = model(img, augment=augment)  # inference and training outputs
-            t0 += time_synchronized() - t
 
-            # Compute loss
-            if compute_loss:
-                loss += compute_loss([x.float() for x in train_out], targets)[1][:3]  # box, obj, cls
+            # Run model
+            outputs = model(img, augment=augment)  # inference and training outputs
+            if len(outputs) >= 2:
+                out, train_out = outputs[:2]
+                # Compute loss
+                if compute_loss:
+                    loss += compute_loss([x.float() for x in train_out], targets)[1]  # lbox, lobj, lcls, lmark, loss
+            else:
+                out = outputs[0]
 
             # Run NMS
             targets[:, 2:6] *= torch.Tensor([width, height, width, height]).to(device)  # to pixels
             lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
             t = time_synchronized()
-            out = out[..., 0:6]
-            # out = non_max_suppression(out, conf_thres=conf_thres, iou_thres=iou_thres, labels=lb, multi_label=True)
-            out = non_max_suppression_landmark(out, conf_thres=conf_thres, iou_thres=iou_thres, labels=lb, multi_label=True)
-            t1 += time_synchronized() - t
-
-            # targetmarkspoints = []
-            # for i in range(4):
-            #     point_x = int(targets[6:][2 * i] * 640)
-            #     point_y = int(targets[6:][2 * i + 1] * 400-12)
-            #     targetmarkspoints.append([point_x, point_y])
+            out = non_max_suppression(out, conf_thres=conf_thres, iou_thres=iou_thres, labels=lb, multi_label=True)
+            # out = non_max_suppression_landmark(out, conf_thres=conf_thres, iou_thres=iou_thres, labels=lb, multi_label=True)
+            # for i, det in enumerate(out):  # detections per image
+            #     gn = torch.tensor(orgimg.shape)[[1, 0, 1, 0]].to(device)  # normalization gain whwh
+            #     gn_lks = torch.tensor(orgimg.shape)[[1, 0, 1, 0, 1, 0, 1, 0]].to(device)  # normalization gain landmarks
+            #     if len(det):
+            #         # Rescale boxes from img_size to im0 size
+            #         det[:, :4] = scale_coords(img.shape[2:], det[:, :4], orgimg.shape).round()
             #
-            # landmarkspoints = []
-            # for i in range(4):
-            #     point_x = int(out[6:][2 * i] * 640)
-            #     point_y = int(out[6:][2 * i + 1] * 400-12)
-            #     landmarkspoints.append([point_x, point_y])
-            # scores=utils.PoseRunningScore.compute_oks(targetmarkspoints,landmarkspoints)
-            # print(scores)
+            #         # Print results
+            #         for c in det[:, -1].unique():
+            #             n = (det[:, -1] == c).sum()  # detections per class
+            #
+            #         det[:, 15:23] = scale_coords_landmarks(img.shape[2:], det[:, 15:23], orgimg.shape).round()
+            #
+            #         for j in range(det.size()[0]):
+            #             xywh = (xyxy2xywh(torch.tensor(det[j, :4]).view(1, 4)) / gn).view(-1).tolist()
+            #             conf = det[j, 4].cpu().numpy()
+            #             landmarks = (det[j, 15:23].view(1, 8) / gn_lks).view(-1).tolist()
+            #             # class_num = det[j, 23].cpu().numpy()
+            #
+            #             orgimg = show_results(orgimg, xywh, conf, landmarks, 10)
+            # print('out.shape :',len(out), out[0].shape)     out -> (bs,labels , 24)
+            t1 += time_synchronized() - t
 
         # Statistics per image
         for si, pred in enumerate(out):
@@ -156,7 +246,7 @@ def test(data,
 
             # Predictions
             predn = pred.clone()
-            scale_coords(img[si].shape[1:], predn[:, :4], shapes[si][0], shapes[si][1])  # native-space pred
+            predn[:, :4] = scale_coords(img[si].shape[1:], predn[:, :4], shapes[si][0], shapes[si][1])  # native-space pred
 
             # Append to text file
             if save_txt:
@@ -305,12 +395,12 @@ def test(data,
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(prog='test.py')
-    parser.add_argument('--weights', nargs='+', type=str, default='runs/train/exp5/weights/best.pt', help='model.pt path(s)')
-    parser.add_argument('--data', type=str, default='data/rubby.yaml', help='*.data path')
-    parser.add_argument('--batch-size', type=int, default=32, help='size of each image batch')
-    parser.add_argument('--img-size', type=int, default=320, help='inference size (pixels)')
-    parser.add_argument('--conf-thres', type=float, default=0.5, help='object confidence threshold')
-    parser.add_argument('--iou-thres', type=float, default=0.5, help='IOU threshold for NMS')
+    parser.add_argument('--weights', nargs='+', type=str, default='runs/train/exp/weights/best1.pt', help='model.pt path(s)')
+    parser.add_argument('--data', type=str, default='data/plat.yaml', help='*.data path')
+    parser.add_argument('--batch-size', type=int, default=4, help='size of each image batch')
+    parser.add_argument('--img-size', type=int, default=640, help='inference size (pixels)')
+    parser.add_argument('--conf-thres', type=float, default=0.001, help='object confidence threshold')
+    parser.add_argument('--iou-thres', type=float, default=0.2, help='IOU threshold for NMS')
     parser.add_argument('--task', default='val', help='train, val, test, speed or study')
     parser.add_argument('--device', default='0', help='cuda device, i.e. 0 or 0,1,2,3 or cpu')
     parser.add_argument('--single-cls', action='store_true', help='treat as single-class dataset')
@@ -330,7 +420,7 @@ if __name__ == '__main__':
     check_requirements()
 
     if opt.task in ('train', 'val', 'test'):  # run normally
-        test(opt.data,
+        val(opt.data,
              opt.weights,
              opt.batch_size,
              opt.img_size,
@@ -347,7 +437,7 @@ if __name__ == '__main__':
 
     elif opt.task == 'speed':  # speed benchmarks
         for w in opt.weights:
-            test(opt.data, w, opt.batch_size, opt.img_size, 0.25, 0.45, save_json=False, plots=False)
+            val(opt.data, w, opt.batch_size, opt.img_size, 0.25, 0.45, save_json=False, plots=False)
 
     elif opt.task == 'study':  # run over a range of settings and save/plot
         # python test.py --task study --data coco.yaml --iou 0.7 --weights yolov5s.pt yolov5m.pt yolov5l.pt yolov5x.pt
@@ -357,10 +447,9 @@ if __name__ == '__main__':
             y = []  # y axis
             for i in x:  # img-size
                 print(f'\nRunning {f} point {i}...')
-                r, _, t = test(opt.data, w, opt.batch_size, i, opt.conf_thres, opt.iou_thres, opt.save_json,
+                r, _, t = val(opt.data, w, opt.batch_size, i, opt.conf_thres, opt.iou_thres, opt.save_json,
                                plots=False)
                 y.append(r + t)  # results and times
             np.savetxt(f, y, fmt='%10.4g')  # save
         os.system('zip -r study.zip study_*.txt')
         plot_study_txt(x=x)  # plot
-

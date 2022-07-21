@@ -8,8 +8,8 @@ import numpy as np
 import torch
 import yaml
 from tqdm import tqdm
-import utils.keypoint_scores
 
+import utils
 from models.experimental import attempt_load
 from utils.plate_datasets import create_dataloader
 from utils.general import coco80_to_coco91_class, check_dataset, check_file, check_img_size, check_requirements, \
@@ -122,24 +122,25 @@ def test(data,
             targets[:, 2:6] *= torch.Tensor([width, height, width, height]).to(device)  # to pixels
             lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
             t = time_synchronized()
-            out = out[..., 0:6]
+
+            # out = out[..., 0:6]
             # out = non_max_suppression(out, conf_thres=conf_thres, iou_thres=iou_thres, labels=lb, multi_label=True)
             out = non_max_suppression_landmark(out, conf_thres=conf_thres, iou_thres=iou_thres, labels=lb, multi_label=True)
             t1 += time_synchronized() - t
+            
+            targetmarkspoints = []
+            for i in range(4):
+                point_x = int(targets[6:][2 * i] * 640)
+                point_y = int(targets[6:][2 * i + 1] * 400-12)
+                targetmarkspoints.append([point_x, point_y])
 
-            # targetmarkspoints = []
-            # for i in range(4):
-            #     point_x = int(targets[6:][2 * i] * 640)
-            #     point_y = int(targets[6:][2 * i + 1] * 400-12)
-            #     targetmarkspoints.append([point_x, point_y])
-            #
-            # landmarkspoints = []
-            # for i in range(4):
-            #     point_x = int(out[6:][2 * i] * 640)
-            #     point_y = int(out[6:][2 * i + 1] * 400-12)
-            #     landmarkspoints.append([point_x, point_y])
-            # scores=utils.PoseRunningScore.compute_oks(targetmarkspoints,landmarkspoints)
-            # print(scores)
+            landmarkspoints = []
+            for i in range(4):
+                point_x = int(out[6:][2 * i] * 640)
+                point_y = int(out[6:][2 * i + 1] * 400-12)
+                landmarkspoints.append([point_x, point_y])
+            scores=utils.PoseRunningScore.compute_oks(targetmarkspoints,landmarkspoints)
+            print(scores)
 
         # Statistics per image
         for si, pred in enumerate(out):
@@ -363,4 +364,3 @@ if __name__ == '__main__':
             np.savetxt(f, y, fmt='%10.4g')  # save
         os.system('zip -r study.zip study_*.txt')
         plot_study_txt(x=x)  # plot
-
