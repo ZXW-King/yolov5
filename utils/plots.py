@@ -168,7 +168,8 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None, max
                 cls = int(classes[j])
                 color = colors[cls % len(colors)]
                 cls = names[cls] if names else cls
-                if labels or conf[j] > 0.25:  # 0.25 conf thresh
+                # if labels or conf[j] > 0.25:  # 0.25 conf thresh
+                if True:
                     label = '%s' % cls if labels else '%s %.1f' % (cls, conf[j])
                     plot_one_box(box, mosaic, label=label, color=color, line_thickness=tl)
 

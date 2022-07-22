@@ -117,7 +117,6 @@ def val(data,
          compute_loss=None,
          half_precision=True,
          is_coco=False):
-    print(batch_size)
     # Initialize/load model and set device
     training = model is not None
     if training:  # called by train.py

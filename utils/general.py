@@ -265,6 +265,18 @@ def xywh2xyxy(x):
     y[:, 3] = x[:, 1] + x[:, 3] / 2  # bottom right y
     return y
 
+def save_one_box(xyxy, im, file='image.jpg', gain=1.02, pad=10, square=False, BGR=False):
+    # Save an image crop as {file} with crop size multiplied by {gain} and padded by {pad} pixels
+    xyxy = torch.tensor(xyxy).view(-1, 4)
+    b = xyxy2xywh(xyxy)  # boxes
+    if square:
+        b[:, 2:] = b[:, 2:].max(1)[0].unsqueeze(1)  # attempt rectangle to square
+    b[:, 2:] = b[:, 2:] * gain + pad  # box wh * gain + pad
+    xyxy = xywh2xyxy(b).long()
+    clip_coords(xyxy, im.shape)
+    crop = im[int(xyxy[0, 1]):int(xyxy[0, 3]), int(xyxy[0, 0]):int(xyxy[0, 2])]
+    cv2.imwrite(str(increment_path(file, mkdir=True).with_suffix('.jpg')), crop if BGR else crop[..., ::-1])
+
 
 def xywhn2xyxy(x, w=640, h=640, padw=0, padh=0):
     # Convert nx4 boxes from [x, y, w, h] normalized to [x1, y1, x2, y2] where xy1=top-left, xy2=bottom-right
@@ -535,8 +547,8 @@ def non_max_suppression_landmark(prediction, conf_thres=0.25, iou_thres=0.45, cl
 
     nc = prediction.shape[2] - 13  # number of classes
     xc = prediction[..., 4] > conf_thres  # candidates
-    index=torch.argmax(prediction[..., 4])
-    print(prediction[..., 4].view(-1)[index])
+    # index=torch.argmax(prediction[..., 4])
+    # print(prediction[..., 4].view(-1)[index])
 
     # Settings
     min_wh, max_wh = 2, 4096  # (pixels) minimum and maximum box width and height
