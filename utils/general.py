@@ -631,25 +631,25 @@ def non_max_suppression_landmark(prediction, conf_thres=0.25, iou_thres=0.45, cl
                 pass
 
         # 默认输出
-        # output[xi] = x[i]
+        output[xi] = x[i]
         # 继续对结果后处理，提升低阈值下性能（0.4）
 
         # 用于推理,降低框的重叠
         # 建议训练过程注释掉681-693  会大大降低val速度
-        tmpx = x[i]
+        #tmpx = x[i]
         # 同类别框相互包裹，去除低置信度，减少误检
-        boxes, scores = tmpx[:, :4], tmpx[:, 4]
-        ioumin = box_iou_min(boxes, boxes)
-        cles = tmpx[:, -1]
-        for class1 in range(len(cles)):
-            for class2 in range(len(cles)):
-                if scores[class1]>0.1 and scores[class2]>0.1 and class1 != class2 and cles[class1] == cles[class2] and ioumin[class1][class2] >0.85:
+        #boxes, scores = tmpx[:, :4], tmpx[:, 4]
+        #ioumin = box_iou_min(boxes, boxes)
+        #cles = tmpx[:, -1]
+        #for class1 in range(len(cles)):
+        #    for class2 in range(len(cles)):
+        #        if scores[class1]>0.1 and scores[class2]>0.1 and class1 != class2 and cles[class1] == cles[class2] and ioumin[class1][class2] >0.85:
                 # if scores[class1] > 0.1 and scores[class2] > 0.1 and class1 != class2 and ioumin[class1][class2] > 0.85:
-                    if scores[class2] > scores[class1]:
-                        scores[class1] = 0
-                    else:
-                        scores[class2] = 0
-        output[xi] = tmpx[scores>0.1]  #outputs
+        #            if scores[class2] > scores[class1]:
+        #                scores[class1] = 0
+        #            else:
+        #                scores[class2] = 0
+        #output[xi] = tmpx[scores>0.1]  #outputs
 
     return output
 

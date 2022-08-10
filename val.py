@@ -205,8 +205,8 @@ def val(data,
             targets[:, 2:6] *= torch.Tensor([width, height, width, height]).to(device)  # to pixels
             lb = [targets[targets[:, 0] == i, 1:] for i in range(nb)] if save_hybrid else []  # for autolabelling
             t = time_synchronized()
-            out = non_max_suppression(out, conf_thres=conf_thres, iou_thres=iou_thres, labels=lb, multi_label=True)
-            # out = non_max_suppression_landmark(out, conf_thres=conf_thres, iou_thres=iou_thres, labels=lb, multi_label=True)
+            #out = non_max_suppression(out, conf_thres=conf_thres, iou_thres=iou_thres, labels=lb, multi_label=True)
+            out = non_max_suppression_landmark(out, conf_thres=conf_thres, iou_thres=iou_thres, labels=lb, multi_label=True)
             # for i, det in enumerate(out):  # detections per image
             #     gn = torch.tensor(orgimg.shape)[[1, 0, 1, 0]].to(device)  # normalization gain whwh
             #     gn_lks = torch.tensor(orgimg.shape)[[1, 0, 1, 0, 1, 0, 1, 0]].to(device)  # normalization gain landmarks
