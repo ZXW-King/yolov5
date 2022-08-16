@@ -3,6 +3,8 @@ import logging
 import sys
 from copy import deepcopy
 
+import torch
+
 sys.path.append('./')  # to run '$ python *.py' files in subdirectories
 logger = logging.getLogger(__name__)
 
@@ -17,6 +19,47 @@ try:
     import thop  # for FLOPS computation
 except ImportError:
     thop = None
+def get_activation(name="silu", inplace=True):
+    if name == "silu":
+        module = nn.SiLU(inplace=inplace)
+    elif name == "relu":
+        module = nn.ReLU(inplace=inplace)
+    elif name == "lrelu":
+        module = nn.LeakyReLU(0.1, inplace=inplace)
+    else:
+        raise AttributeError("Unsupported act type: {}".format(name))
+    return module
+
+
+
+class BaseConv(nn.Module):
+    """A Conv2d -> Batchnorm -> silu/leaky relu block"""
+
+    def __init__(
+        self, in_channels, out_channels, ksize, stride, groups=1, bias=False, act="silu"
+    ):
+        super().__init__()
+        # same padding
+        pad = (ksize - 1) // 2
+        self.conv = nn.Conv2d(
+            in_channels,
+            out_channels,
+            kernel_size=ksize,
+            stride=stride,
+            padding=pad,
+            groups=groups,
+            bias=bias,
+        )
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.act = get_activation(act, inplace=True)
+
+    def forward(self, x):
+        # print(self.bn(self.conv(x)).shape)
+        return self.act(self.bn(self.conv(x)))
+        # return self.bn(self.conv(x))
+
+    def fuseforward(self, x):
+        return self.act(self.conv(x))
 
 
 class Detect(nn.Module):
@@ -27,7 +70,8 @@ class Detect(nn.Module):
     def __init__(self, nc=80, anchors=(), ch=()):  # detection layer
         super(Detect, self).__init__()
         self.nc = nc  # number of classes
-        self.no = nc + 5 + 8 # number of outputs per anchor
+        self.no = nc + 5  # number of outputs per anchor
+        self.no1 = nc + 5 + 8 # number of outputs per anchor
         self.nl = len(anchors)  # number of detection layers
         self.na = len(anchors[0]) // 2  # number of anchors
         self.grid = [torch.zeros(1)] * self.nl  # init grid
@@ -35,19 +79,28 @@ class Detect(nn.Module):
         self.register_buffer('anchors', a)  # shape(nl,na,2)
         self.register_buffer('anchor_grid', a.clone().view(self.nl, 1, -1, 1, 1, 2))  # shape(nl,1,na,1,1,2)
         self.m = nn.ModuleList(nn.Conv2d(x, self.no * self.na, 1) for x in ch)  # output conv
+        self.conv_keypoint1=nn.ModuleList(BaseConv(in_channels = x, out_channels = 64, ksize = 1, stride = 1) for x in ch)
+        self.conv_keypoint2=nn.ModuleList(BaseConv(in_channels = 64, out_channels = 24, ksize = 1, stride = 1) for x in ch)
+
 
     def forward(self, x):
-        # x = x.copy()  # for profiling
         z = []  # inference output
         self.training |= self.export
+        x_keypoint = x.copy()
         for i in range(self.nl):
             x[i] = self.m[i](x[i])  # conv
 
+
+
+            keypoint_feature = self.conv_keypoint1[i](x_keypoint[i])
+            x_keypoint[i] = self.conv_keypoint2[i](keypoint_feature)
             if self.ignore_permute_layer is True:
                 continue
 
             bs, _, ny, nx = x[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
+            bs1, _, ny1, nx1 = x_keypoint[i].shape  # x(bs,255,20,20) to x(bs,3,20,20,85)
             x[i] = x[i].view(bs, self.na, self.no, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
+            x_keypoint[i] = x_keypoint[i].view(bs, self.na, 8, ny, nx).permute(0, 1, 3, 4, 2).contiguous()
 
             if not self.training:  # inference
                 if self.grid[i].shape[2:4] != x[i].shape[2:4]:
@@ -57,13 +110,18 @@ class Detect(nn.Module):
                 y[..., 0:2] = (y[..., 0:2] * 2. - 0.5 + self.grid[i]) * self.stride[i]  # xy
                 y[..., 2:4] = (y[..., 2:4] * 2) ** 2 * self.anchor_grid[i]  # wh
 
-                y[..., 5+self.nc:13+self.nc] = y[..., 5+self.nc:13+self.nc] * 4 - 2
-                y[..., 5+self.nc:7+self.nc] = y[..., 5+self.nc:7+self.nc] * self.anchor_grid[i] + self.grid[i].to(x[i].device) * self.stride[i] # landmark x1 y1
-                y[..., 7+self.nc:9+self.nc] = y[..., 7+self.nc:9+self.nc] * self.anchor_grid[i]  + self.grid[i].to(x[i].device) * self.stride[i]# landmark x2 y2
-                y[..., 9+self.nc:11+self.nc] = y[..., 9+self.nc:11+self.nc] * self.anchor_grid[i]  + self.grid[i].to(x[i].device) * self.stride[i]# landmark x3 y3
-                y[..., 11+self.nc:13+self.nc] = y[..., 11+self.nc:13+self.nc] * self.anchor_grid[i]  + self.grid[i].to(x[i].device) * self.stride[i]# landmark x4 y4
+                y_keypoint = x_keypoint[i].sigmoid()
 
-                z.append(y.view(bs, -1, self.no))
+                y_keypoint[..., 0:8] = y_keypoint[..., 0:8] * 4 - 2
+                y_keypoint[..., 0:2] = y_keypoint[..., 0:2] * self.anchor_grid[i] + self.grid[i].to(x_keypoint[i].device) * self.stride[i] # landmark x1 y1
+                y_keypoint[..., 2:4] = y_keypoint[..., 2:4] * self.anchor_grid[i]  + self.grid[i].to(x_keypoint[i].device) * self.stride[i]# landmark x2 y2
+                y_keypoint[..., 4:6] = y_keypoint[..., 4:6] * self.anchor_grid[i]  + self.grid[i].to(x_keypoint[i].device) * self.stride[i]# landmark x3 y3
+                y_keypoint[..., 6:8] = y_keypoint[..., 6:8] * self.anchor_grid[i]  + self.grid[i].to(x_keypoint[i].device) * self.stride[i]# landmark x4 y4
+
+                y = torch.cat((y, y_keypoint), -1)
+                z.append(y.view(bs, -1, self.no+8))
+
+            x[i]=torch.cat((x[i],x_keypoint[i]),-1)
 
         return x if self.training else (torch.cat(z, 1), x)
 
