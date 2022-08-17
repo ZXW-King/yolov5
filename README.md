@@ -83,8 +83,9 @@
 <a name="脚注5">5</a>: 本库仅涉及 python 端的开发， 暂不涉及 部署端代码。
 
 
-
-
+### 关键点展示功能
+  
+`python detect_one.py --model weights/A6.2.7.pt --yaml models/yolov5s.yaml --input ./test_img  --output_dir ./result`
 
 ## TODO
 
