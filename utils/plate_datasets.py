@@ -417,7 +417,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         labels, shapes, self.landmarks = zip(*cache.values())
         self.labels = list(labels)
         self.shapes = np.array(shapes, dtype=np.float64)
-        self.img_files = [x.split('@')[0] for x in self.img_files]
+        self.img_files = [x.split('@')[0] for x in list(cache.keys())]
         self.label_files = img2label_paths(self.img_files)  # update
 
         if single_cls:
