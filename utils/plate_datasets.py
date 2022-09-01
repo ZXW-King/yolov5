@@ -372,7 +372,23 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                         # f += [p.parent / x.lstrip(os.sep) for x in t]  # local to global path (pathlib)
                 else:
                     raise Exception(f'{prefix}{p} does not exist')
+
             self.img_files = sorted([x.replace('/', os.sep) for x in f if x.split('.')[-1].lower() in img_formats])
+            if self.mosaic:
+                self.img_files_copy=[]
+                for imgs_file in self.img_files:
+                    labels_file=img2label_paths([imgs_file])
+                    with open(labels_file[0], 'r') as file:
+                        ann_file_lines = file.readlines()
+                    for ann_file_line in ann_file_lines:
+                        line_temp = ann_file_line.strip().split(' ')
+                        if line_temp[0]=='7' or line_temp[0]=='8':
+                            for i in range(14):
+                                self.img_files_copy.append(imgs_file)
+                            break
+                self.img_files.extend(self.img_files_copy)
+                self.img_files = sorted(self.img_files)
+
             # self.img_files = sorted([x for x in f if x.suffix[1:].lower() in img_formats])  # pathlib
             assert self.img_files, f'{prefix}No images found'
         except Exception as e:
@@ -401,8 +417,9 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         labels, shapes, self.landmarks = zip(*cache.values())
         self.labels = list(labels)
         self.shapes = np.array(shapes, dtype=np.float64)
-        self.img_files = list(cache.keys())  # update
-        self.label_files = img2label_paths(cache.keys())  # update
+        self.img_files = [x.split('@')[0] for x in self.img_files]
+        self.label_files = img2label_paths(self.img_files)  # update
+
         if single_cls:
             for x in self.labels:
                 x[:, 0] = 0
@@ -501,7 +518,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                     nm += 1  # label missing
                     l = np.zeros((0, 5), dtype=np.float32)
                     landmarks = np.zeros((1, 8), dtype=np.float32) - 1
-                x[im_file] = [l, shape, landmarks]
+                x[im_file+'@'+str(i)] = [l, shape, landmarks]
             except Exception as e:
                 nc += 1
                 print(f'{prefix}WARNING: Ignoring corrupted image and/or label {im_file}: {e}')
@@ -590,9 +607,9 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 labels = np.hstack((labels, landmarks))
             else:
                 print("error")
-            # Apply cutouts
-            # if random.random() < 0.9:
-            #     labels = cutout(img, labels)
+        # Apply cutouts
+        if random.random() < 0.4:
+            labels = cutout(img, labels)
 
         nL = len(labels)  # number of labels
 
@@ -802,7 +819,7 @@ def load_mosaic(self, index):
                                        translate=self.hyp['translate'],
                                        scale=self.hyp['scale'],
                                        shear=self.hyp['shear'],
-                                       perspective=self.hyp['perspective'],
+                                       perspective=0.002,
                                        border=self.mosaic_border)  # border to remove
     # mask = np.zeros((320, 320, 3), dtype=np.uint8)
     # landmarks2 = np.squeeze(np.round(np.array(landmarks4[0])).astype(int))
@@ -1086,7 +1103,7 @@ def cutout(image, labels):
         return inter_area / box2_area
 
     # create random masks
-    scales = [0.5] * 1 + [0.25] * 2 + [0.125] * 4 + [0.0625] * 8 + [0.03125] * 16  # image size fraction
+    scales = [0.25] * 1 #+ [0.25] * 2 + [0.125] * 4 + [0.0625] * 8 + [0.03125] * 16  # image size fraction
     for s in scales:
         mask_h = random.randint(1, int(h * s))
         mask_w = random.randint(1, int(w * s))
@@ -1098,7 +1115,7 @@ def cutout(image, labels):
         ymax = min(h, ymin + mask_h)
 
         # apply random color mask
-        image[ymin:ymax, xmin:xmax] = [random.randint(64, 191) for _ in range(3)]
+        image[ymin:ymax, xmin:xmax] = [0,0,0]
 
         # return unobscured labels
         if len(labels) and s > 0.03:
