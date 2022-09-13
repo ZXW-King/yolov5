@@ -57,7 +57,7 @@ def exif_size(img):
 
 
 def create_dataloader(path, imgsz, batch_size, stride, opt, hyp=None, augment=False, cache=False, pad=0.0, rect=False,
-                      rank=-1, world_size=1, workers=8, image_weights=False, quad=False, prefix=''):
+                      rank=-1, world_size=1, workers=8, image_weights=False, quad=False, prefix='',dupliNums= 0) :
     # Make sure only the first process in DDP process the dataset first, and the following others can use the cache
     with torch_distributed_zero_first(rank):
         dataset = LoadImagesAndLabels(path, imgsz, batch_size,
@@ -69,7 +69,8 @@ def create_dataloader(path, imgsz, batch_size, stride, opt, hyp=None, augment=Fa
                                       stride=int(stride),
                                       pad=pad,
                                       image_weights=image_weights,
-                                      prefix=prefix)
+                                      prefix=prefix,
+                                      duplicate=dupliNums)
 
     batch_size = min(batch_size, len(dataset))
     nw = min([os.cpu_count() // world_size, batch_size if batch_size > 1 else 0, workers])  # number of workers
@@ -346,7 +347,7 @@ def img2label_paths(img_paths):
 
 class LoadImagesAndLabels(Dataset):  # for training/testing
     def __init__(self, path, img_size=640, batch_size=16, augment=False, hyp=None, rect=False, image_weights=False,
-                 cache_images=False, single_cls=False, stride=32, pad=0.0, prefix=''):
+                 cache_images=False, single_cls=False, stride=32, pad=0.0, prefix='',duplicate=0):
         self.img_size = img_size
         self.augment = augment
         self.hyp = hyp
@@ -378,7 +379,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                 self.img_files_copy = []
                 for imgs_file in self.img_files:
                     if '20220909_negative' in imgs_file:
-                        for j in range(14):
+                        for j in range(duplicate):
                             self.img_files_copy.append(imgs_file)
                         continue
                     labels_file = img2label_paths([imgs_file])
@@ -387,7 +388,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                     for ann_file_line in ann_file_lines:
                         line_temp = ann_file_line.strip().split(' ')
                         if line_temp[0] == '7' or line_temp[0] == '8':
-                            for i in range(14):
+                            for i in range(duplicate):
                                 self.img_files_copy.append(imgs_file)
                             break
                 self.img_files.extend(self.img_files_copy)
