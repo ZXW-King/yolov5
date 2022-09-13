@@ -375,14 +375,18 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
 
             self.img_files = sorted([x.replace('/', os.sep) for x in f if x.split('.')[-1].lower() in img_formats])
             if self.mosaic:
-                self.img_files_copy=[]
+                self.img_files_copy = []
                 for imgs_file in self.img_files:
-                    labels_file=img2label_paths([imgs_file])
+                    if '20220909_negative' in imgs_file:
+                        for j in range(14):
+                            self.img_files_copy.append(imgs_file)
+                        continue
+                    labels_file = img2label_paths([imgs_file])
                     with open(labels_file[0], 'r') as file:
                         ann_file_lines = file.readlines()
                     for ann_file_line in ann_file_lines:
                         line_temp = ann_file_line.strip().split(' ')
-                        if line_temp[0]=='7' or line_temp[0]=='8':
+                        if line_temp[0] == '7' or line_temp[0] == '8':
                             for i in range(14):
                                 self.img_files_copy.append(imgs_file)
                             break
@@ -492,17 +496,19 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                         l = [x.split() for x in f.read().strip().splitlines()]
 
                         if any([len(x) > 5 for x in l]):  # is landmarks
-                            for x1 in l :
+                            for x1 in l:
                                 if len(x1) == 5:
-                                    x1.extend(np.array(np.zeros((1, 8), dtype=np.float32) - 1, dtype=np.float32).tolist())
+                                    x1.extend(
+                                        np.array(np.zeros((1, 8), dtype=np.float32) - 1, dtype=np.float32).tolist())
                             classes = np.array([x[0] for x in l], dtype=np.float32)
                             rects = [np.array(x[1:5], dtype=np.float32) for x in l]
                             landmarks = [np.array(x[5:13], dtype=np.float32).reshape(-1, 2) for x in l]  # (cls, xy1...)
                             l = np.concatenate((classes.reshape(-1, 1), rects), 1)  # (cls, xywh)
-                        else:
+                        elif len(l):
                             classes = np.array([x[0] for x in l], dtype=np.float32)
                             rects = [np.array(x[1:5], dtype=np.float32) for x in l]
-                            landmarks = [np.array([-1,-1,-1,-1,-1,-1,-1,-1], dtype=np.float32).reshape(-1, 2) for x in l]  # (cls, xy1...)
+                            landmarks = [np.array([-1, -1, -1, -1, -1, -1, -1, -1], dtype=np.float32).reshape(-1, 2) for
+                                         x in l]  # (cls, xy1...)
                             l = np.concatenate((classes.reshape(-1, 1), rects), 1)  # (cls, xywh)
                         l = np.array(l, dtype=np.float32)
                     if len(l):
@@ -513,12 +519,12 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                     else:
                         ne += 1  # label empty
                         l = np.zeros((0, 5), dtype=np.float32)
-                        landmarks = np.zeros((1, 8), dtype=np.float32) - 1
+                        landmarks = np.zeros((0, 8), dtype=np.float32)
                 else:
                     nm += 1  # label missing
                     l = np.zeros((0, 5), dtype=np.float32)
-                    landmarks = np.zeros((1, 8), dtype=np.float32) - 1
-                x[im_file+'@'+str(i)] = [l, shape, landmarks]
+                    landmarks = np.zeros((0, 8), dtype=np.float32)
+                x[im_file + '@' + str(i)] = [l, shape, landmarks]
             except Exception as e:
                 nc += 1
                 print(f'{prefix}WARNING: Ignoring corrupted image and/or label {im_file}: {e}')
@@ -605,8 +611,8 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             if landmarks.shape[0] > 0:
                 landmarks = landmarks.reshape(landmarks.shape[0], -1)
                 labels = np.hstack((labels, landmarks))
-            else:
-                print("error")
+
+
         # Apply cutouts
         if random.random() < 0.4:
             labels = cutout(img, labels)
@@ -617,7 +623,6 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             labels[:, 1:5] = xyxy2xywh(labels[:, 1:5])  # convert xyxy to xywh
             labels[:, [2, 4]] /= img.shape[0]  # normalized height 0-1
             labels[:, [1, 3]] /= img.shape[1]  # normalized width 0-1
-
 
             labels[:, [5, 7, 9, 11]] /= img.shape[1]  # normalized landmark x 0-1
             labels[:, [5, 7, 9, 11]] = np.where(labels[:, [5, 7, 9, 11]] < 0, -1, labels[:, [5, 7, 9, 11]])
@@ -834,7 +839,6 @@ def load_mosaic(self, index):
     # img4 = cv2.addWeighted(img4, 1, mask, 0.5, 0)
     #
     # cv2.imwrite('./test_qiege.jpg', img4)
-
 
     return img4, labels4
 
@@ -1068,7 +1072,7 @@ def random_perspective(img, targets=(), landmarks=(), degrees=10, translate=.1, 
                 # print('*************** landmarks: ', landmarks)
                 newtargets = np.hstack((targets, landmarks))
             # print('newtargets: ', newtargets)
-
+    else:newtargets=targets
     return img, newtargets
 
 
@@ -1103,7 +1107,7 @@ def cutout(image, labels):
         return inter_area / box2_area
 
     # create random masks
-    scales = [0.25] * 1 #+ [0.25] * 2 + [0.125] * 4 + [0.0625] * 8 + [0.03125] * 16  # image size fraction
+    scales = [0.25] * 1  # + [0.25] * 2 + [0.125] * 4 + [0.0625] * 8 + [0.03125] * 16  # image size fraction
     for s in scales:
         mask_h = random.randint(1, int(h * s))
         mask_w = random.randint(1, int(w * s))
@@ -1115,7 +1119,7 @@ def cutout(image, labels):
         ymax = min(h, ymin + mask_h)
 
         # apply random color mask
-        image[ymin:ymax, xmin:xmax] = [0,0,0]
+        image[ymin:ymax, xmin:xmax] = [0, 0, 0]
 
         # return unobscured labels
         if len(labels) and s > 0.03:
