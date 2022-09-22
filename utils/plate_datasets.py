@@ -481,7 +481,7 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
         pbar = tqdm(zip(self.img_files, self.label_files), desc='Scanning images', total=len(self.img_files))
         for i, (im_file, lb_file) in enumerate(pbar):
             try:
-                # verify images
+            # verify images
                 im = Image.open(im_file)
                 im.verify()  # PIL verify
                 shape = exif_size(im)  # image size
@@ -499,8 +499,11 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                         if any([len(x) > 5 for x in l]):  # is landmarks
                             for x1 in l:
                                 if len(x1) == 5:
-                                    x1.extend(
-                                        np.array(np.zeros((1, 8), dtype=np.float32) - 1, dtype=np.float32).tolist())
+                                    x_land=np.array(x1.copy()).astype("float32").tolist()
+                                   # x1.extend(
+                                   #    np.array(np.zeros((1, 8), dtype=np.float32) - 1, dtype=str).reshape(-1,).tolist())
+                                    x1.extend(np.array([x_land[1]-x_land[3]/2.0, x_land[2]+x_land[4]/2.0, x_land[1]+x_land[3]/2.0, x_land[2]+x_land[4]/2.0,
+                                x_land[1]+x_land[3]/2.0, x_land[2]-x_land[4]/2.0, x_land[1]-x_land[3]/2.0, x_land[2]-x_land[4]/2.0], dtype=str).reshape(-1,).tolist())
                             classes = np.array([x[0] for x in l], dtype=np.float32)
                             rects = [np.array(x[1:5], dtype=np.float32) for x in l]
                             landmarks = [np.array(x[5:13], dtype=np.float32).reshape(-1, 2) for x in l]  # (cls, xy1...)
@@ -508,8 +511,12 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                         elif len(l):
                             classes = np.array([x[0] for x in l], dtype=np.float32)
                             rects = [np.array(x[1:5], dtype=np.float32) for x in l]
-                            landmarks = [np.array([-1, -1, -1, -1, -1, -1, -1, -1], dtype=np.float32).reshape(-1, 2) for
-                                         x in l]  # (cls, xy1...)
+                            #landmarks = [np.array([-1, -1, -1, -1, -1, -1, -1, -1], dtype=np.float32).reshape(-1, 2) for
+                            #             x in l]  # (cls, xy1...)
+                            landmarks = [np.array([rect[0]-rect[2]/2.0, rect[1]+rect[3]/2.0, rect[0]+rect[2]/2.0, rect[1]+rect[3]/2.0,
+                                rect[0]+rect[2]/2.0, rect[1]-rect[3]/2.0, rect[0]-rect[2]/2.0, rect[1]-rect[3]/2.0], dtype=np.float32).reshape(-1, 2)
+                                for rect in rects]
+
                             l = np.concatenate((classes.reshape(-1, 1), rects), 1)  # (cls, xywh)
                         l = np.array(l, dtype=np.float32)
                     if len(l):
