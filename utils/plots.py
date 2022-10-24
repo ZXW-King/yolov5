@@ -152,6 +152,8 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None, max
         if len(targets) > 0:
             image_targets = targets[targets[:, 0] == i]
             boxes = xywh2xyxy(image_targets[:, 2:6]).T
+
+            keyponit = image_targets[:,6:]
             classes = image_targets[:, 1].astype('int')
             labels = image_targets.shape[1] == 6  # labels if no conf column
             conf = None if labels else image_targets[:, 6]  # check for confidence presence (label vs pred)
@@ -172,6 +174,11 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None, max
                 if True:
                     label = '%s' % cls if labels else '%s %.1f' % (cls, conf[j])
                     plot_one_box(box, mosaic, label=label, color=color, line_thickness=tl)
+            for t in range(len(image_targets)):
+                for t_k in range(4):
+                    cv2.circle(mosaic, (int(keyponit[t][t_k * 2 + 0] * w ) + block_x , int(keyponit[t][t_k * 2 + 1] * h) + block_y), 3,
+                               (255, 0, 0))
+
 
         # Draw image filename labels
         if paths:
