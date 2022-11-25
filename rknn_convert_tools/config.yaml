@@ -1,7 +1,7 @@
 running:
   model_type: onnx
   export: True
-  inference: False
+  inference: True
   eval_perf: False
 
 
@@ -10,7 +10,7 @@ parameters:
     model: './mobilenet_v2.prototxt'
     proto: 'caffe' #lstm_caffe
     blobs: './mobilenet_v2.caffemodel'
-  
+
   tensorflow:
     tf_pb: './ssd_mobilenet_v1_coco_2017_11_17.pb'
     inputs: ['FeatureExtractor/MobilenetV1/MobilenetV1/Conv2d_0/BatchNorm/batchnorm/mul_1']
@@ -21,7 +21,7 @@ parameters:
     model: './sample/tflite/mobilenet_v1/mobilenet_v1.tflite'
 
   onnx:
-    model: './best.onnx'
+    model: '/home/ljx/Code/200sever/project/Rubby/yolov5_rknn/rknn_convert_tools/crestereo_without_flow_torch1.8.onnx'
 
   darknet:
     model: './yolov3-tiny.cfg'
@@ -37,25 +37,22 @@ parameters:
     input_size_list: [[3, 224, 224]]
 
   rknn:
-    path: './test.rknn'
+    path: '/home/ljx/Code/200sever/project/Rubby/yolov5_rknn/rknn_convert_tools/crestereo_without_flow_torch1.8.rknn'
 
 config:
-  channel_mean_value: '0 0 0 255' # 123.675 116.28 103.53 58.395 # 0 0 0 255
-  reorder_channel: '2 1 0' # '0 1 2' '2 1 0'
-  need_horizontal_merge: True
-  batch_size: 10
-  epochs: 100
-  target_platform: ['rk1808']
-  quantized_dtype: 'asymmetric_quantized-u8' # asymmetric_quantized-u8,dynamic_fixed_point-8,dynamic_fixed_point-16
+  mean_values: [0, 0, 0] # 123.675 116.28 103.53 58.395 # 0 0 0 255
+  std_values: [255, 255, 255]
+  quant_img_RGB2BGR: True # '2 1 0' # '0 1 2' '2 1 0'
+  target_platform: 'rk3566'
+  quantized_dtype: 'asymmetric_quantized-8' # asymmetric_quantized-u8,dynamic_fixed_point-8,dynamic_fixed_point-16
   optimization_level: 1
 
 build:
   do_quantization: True
-  dataset: './single_dataset.txt' 
-  pre_compile: False
+  dataset: '/mnt/sdb2/dataset/keypoint2/train.txt'
 
 export_rknn:
-  export_path: './best.rknn'
+  export_path: './A6.2.24.rknn'
 
 init_runtime:
   target: null
@@ -65,7 +62,7 @@ init_runtime:
   async_mode: False
 
 img: &img
-  path: './test.jpg'
+  path: './bus.jpg'
 
 inference:
   inputs: *img
