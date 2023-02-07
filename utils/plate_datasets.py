@@ -378,10 +378,10 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
             if self.mosaic:
                 self.img_files_copy = []
                 for imgs_file in self.img_files:
-                    if '20220909_negative' in imgs_file:
-                        for j in range(duplicate):
-                            self.img_files_copy.append(imgs_file)
-                        continue
+                    # if '20220909_negative' in imgs_file:
+                    #     for j in range(duplicate):
+                    #         self.img_files_copy.append(imgs_file)
+                    #     continue
                     labels_file = img2label_paths([imgs_file])
                     with open(labels_file[0], 'r') as file:
                         ann_file_lines = file.readlines()
@@ -832,7 +832,7 @@ def load_mosaic(self, index):
                                        translate=self.hyp['translate'],
                                        scale=self.hyp['scale'],
                                        shear=self.hyp['shear'],
-                                       perspective=0.002,
+                                       perspective=self.hyp['perspective'],
                                        border=self.mosaic_border)  # border to remove
     # mask = np.zeros((320, 320, 3), dtype=np.uint8)
     # landmarks2 = np.squeeze(np.round(np.array(landmarks4[0])).astype(int))
