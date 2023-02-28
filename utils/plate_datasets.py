@@ -495,6 +495,11 @@ class LoadImagesAndLabels(Dataset):  # for training/testing
                     nf += 1  # label found
                     with open(lb_file, 'r') as f:
                         l = [x.split() for x in f.read().strip().splitlines()]
+                        for index, desk_only in enumerate(l):
+                            if desk_only[0] == '7':
+                                l[index][0] = '0'
+                            else:
+                                l.remove(desk_only)
 
                         if any([len(x) > 5 for x in l]):  # is landmarks
                             for x1 in l:
