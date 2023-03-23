@@ -15,6 +15,8 @@ cls: 0.5  # cls loss gain
 cls_pw: 1.0  # cls BCELoss positive_weight
 obj: 1.0  # obj loss gain (scale with pixels)
 obj_pw: 1.0  # obj BCELoss positive_weight
+markobj: 1.0  # landmark obj loss gain (scale with pixels)
+lmobj_pw: 1.0  # landmark obj loss gain (scale with pixels)
 iou_t: 0.20  # IoU training threshold
 anchor_t: 4.0  # anchor-multiple threshold
 # anchors: 3  # anchors per output layer (0 to ignore)
@@ -26,7 +28,7 @@ degrees: 0.0  # image rotation (+/- deg)
 translate: 0.1  # image translation (+/- fraction)
 scale: 0.5  # image scale (+/- gain)
 shear: 0.0  # image shear (+/- deg)
-perspective: 0.0  # image perspective (+/- fraction), range 0-0.001
+perspective: 0.002  # image perspective (+/- fraction), range 0-0.001
 flipud: 0.0  # image flip up-down (probability)
 fliplr: 0.5  # image flip left-right (probability)
 mosaic: 1.0  # image mosaic (probability)

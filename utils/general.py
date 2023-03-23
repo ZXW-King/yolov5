@@ -20,6 +20,8 @@ import yaml
 from utils.google_utils import gsutil_getsize
 from utils.metrics import fitness
 from utils.torch_utils import init_torch_seeds
+from shapely.geometry import Polygon, MultiPolygon
+from shapely.ops import unary_union
 
 # Settings
 torch.set_printoptions(linewidth=320, precision=5, profile='long')
@@ -440,7 +442,104 @@ def box_iou(box1, box2):
     return inter / (area1[:, None] + area2 - inter)  # iou = inter / (area1 + area2 - inter)
 
 
-def wh_iou(wh1, wh2):
+# method1
+def iou_poly(poly1, poly2):
+    """
+    Compute IoU between two polygons (assumed to be simple and non-self-intersecting)
+    :param poly1: tensor of shape (B, N1, 2) representing polygons as (x, y) coordinates
+    :param poly2: tensor of shape (B, N2, 2) representing polygons as (x, y) coordinates
+    :return: tensor of shape (B,) representing IoU between the two polygons
+    """
+    device = poly1.device
+    B = poly1.shape[0]
+
+    # Convert polygons to Shapely objects
+    polys1 = []
+    for p in poly1:
+        points = [(p[i, 0].item(), p[i, 1].item()) for i in range(p.shape[0])]
+        polys1.append(Polygon(points))
+    polys2 = []
+    for p in poly2:
+        points = [(p[i, 0].item(), p[i, 1].item()) for i in range(p.shape[0])]
+        polys2.append(Polygon(points))
+
+    # Check for self-intersecting polygons and simplify them
+    iou = np.zeros(B)
+
+    # Compute IoU between polygons
+    for i in range(B):
+        if not polys1[i].is_simple:
+            iou[i] = torch.tensor(0).to(device)
+        elif not polys2[i].is_simple:
+            iou[i] = torch.tensor(1).to(device)
+        else:
+            iou[i] = polys1[i].intersection(polys2[i]).area / polys1[i].union(polys2[i]).area
+    return torch.Tensor(iou).to(device)
+
+def bounding_rect_batch(points: torch.Tensor) -> torch.Tensor:
+    """
+    求四边形外接矩形（支持批量操作）
+    :param points: 多组四个顶点的坐标，tensor([[[x11, y11], [x12, y12], [x13, y13], [x14, y14]],
+                                      [[x21, y21], [x22, y22], [x23, y23], [x24, y24]],
+                                      ...
+                                      [[xn1, yn1], [xn2, yn2], [xn3, yn3], [xn4, yn4]]])
+    :return: 每组矩形的左上角和右下角的坐标，tensor([[[left1, top1], [right1, bottom1]],
+                                                  [[left2, top2], [right2, bottom2]],
+                                                  ...
+                                                  [[leftn, topn], [rightn, bottomn]]])
+    """
+    xs, ys = points[:, :, 0], points[:, :, 1]
+
+    # 计算四个顶点的最大值和最小值
+    min_x = torch.min(xs, dim=1).values
+    max_x = torch.max(xs, dim=1).values
+    min_y = torch.min(ys, dim=1).values
+    max_y = torch.max(ys, dim=1).values
+
+
+    x_center = (max_x + min_x)/2.0
+    y_center = (max_y + min_y)/2.0
+    width = max_x - min_x
+    height = max_y - min_y
+
+
+    # 返回左上角和右下角的坐标
+    return torch.stack([x_center, y_center, width, height], dim=-1)
+
+# method4
+def iou_quad(quad1, quad2):
+    device = quad1.device
+        # Convert quadrilateral vertices to polygons
+    poly1 = torch.stack([
+            quad1[:, 0:2], quad1[:, 2:4], quad1[:, 4:6], quad1[:, 6:8]
+        ], dim=1)
+    poly2 = torch.stack([
+            quad2[:, 0:2], quad2[:, 2:4], quad2[:, 4:6], quad2[:, 6:8]
+        ], dim=1)
+
+    #外接矩形
+    poly1_bounding_01 = bounding_rect_batch(poly1[:, 0:2,:])
+    poly2_bounding_01 = bounding_rect_batch(poly2[:, 0:2,:])
+    iou_bounding_01 = bbox_iou(poly1_bounding_01.T, poly2_bounding_01, x1y1x2y2=False, CIoU=True)
+
+    poly1_bounding_12 = bounding_rect_batch(poly1[:, 1:3,:])
+    poly2_bounding_12 = bounding_rect_batch(poly2[:, 1:3,:])
+    iou_bounding_12 = bbox_iou(poly1_bounding_12.T, poly2_bounding_12, x1y1x2y2=False, CIoU=True)
+
+    poly1_bounding_23 = bounding_rect_batch(poly1[:, 2:4,:])
+    poly2_bounding_23 = bounding_rect_batch(poly2[:, 2:4,:])
+    iou_bounding_23 = bbox_iou(poly1_bounding_23.T, poly2_bounding_23, x1y1x2y2=False, CIoU=True)
+
+
+    poly1_bounding_30 = bounding_rect_batch(torch.stack([poly1[:, -1, :], poly1[:, 0, :]], dim=1))
+    poly2_bounding_30 = bounding_rect_batch(torch.stack([poly2[:, -1, :], poly2[:, 0, :]], dim=1))
+    iou_bounding_30 = bbox_iou(poly1_bounding_30.T, poly2_bounding_30, x1y1x2y2=False, CIoU=True)
+
+    iou = iou_bounding_01 + iou_bounding_12 + iou_bounding_23 + iou_bounding_30
+
+    return iou/4.0
+
+def compute_iou(wh1, wh2):
     # Returns the nxm IoU matrix. wh1 is nx2, wh2 is mx2
     wh1 = wh1[:, None]  # [N,1,2]
     wh2 = wh2[None]  # [1,M,2]
