@@ -644,7 +644,7 @@ def non_max_suppression_landmark(prediction, conf_thres=0.25, iou_thres=0.45, cl
          detections with shape: nx6 (x1, y1, x2, y2, conf, cls)
     """
 
-    nc = prediction.shape[2] - 13  # number of classes
+    nc = prediction.shape[2] - 14  # number of classes
     xc = prediction[..., 4] > conf_thres  # candidates
     # index=torch.argmax(prediction[..., 4])
     # print(prediction[..., 4].view(-1)[index])
@@ -659,7 +659,7 @@ def non_max_suppression_landmark(prediction, conf_thres=0.25, iou_thres=0.45, cl
     merge = False  # use merge-NMS
 
     t = time.time()
-    output = [torch.zeros((0, nc +14 ), device=prediction.device)] * prediction.shape[0]
+    output = [torch.zeros((0, nc +15 ), device=prediction.device)] * prediction.shape[0]
     for xi, x in enumerate(prediction):  # image index, image inference
         # Apply constraints
         # x[((x[..., 2:4] < min_wh) | (x[..., 2:4] > max_wh)).any(1), 4] = 0  # width-height
@@ -689,10 +689,10 @@ def non_max_suppression_landmark(prediction, conf_thres=0.25, iou_thres=0.45, cl
         # Detections matrix nx6 (xyxy, conf, landmarks, cls)
         if multi_label:
             i, j = (x[:, 5:5+nc] > conf_thres).nonzero(as_tuple=False).T
-            x = torch.cat((box[i], x[i, j + 5, None], x[i, 5:13+nc], j[:, None].float()), 1)   # 5+nc:12+nc
+            x = torch.cat((box[i], x[i, j + 5, None], x[i, 5:13+nc], x[i, 13+nc:13+nc+1], j[:, None].float()), 1)   # 5+nc:12+nc
         else:  # best class only
             conf, j = x[:, 5:5+nc].max(1, keepdim=True)
-            x = torch.cat((box, conf, x[:, 5:13+nc], j.float()), 1)[conf.view(-1) > conf_thres]
+            x = torch.cat((box, conf, x[:, 5:13+nc], x[:, 13+nc:13+nc+1], j.float()), 1)[conf.view(-1) > conf_thres]
 
         # Filter by class
         if classes is not None:
