@@ -126,7 +126,7 @@ def show_results(img, xywh, conf, landmarks, class_num, keypoint_conf):
 
     tf = max(tl - 1, 1)  # font thickness
     # label = str(int(class_num)) + ': ' + str(conf)[:5] + '&:' +str(ther)
-    label = str(int(class_num)) + ': ' + str(conf)[:5] + ' kconf： ' + str(keypoint_conf)[:5]
+    label = str(int(class_num)) + ': ' + str(conf)[:5] + ' kconf: ' + str(keypoint_conf)[:5]
     print('label', str(int(class_num)) + ': ' + str(conf)[:5] + ' 航向角:' + str(ther))
     cv2.putText(img, label, (x1, y2 - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
     return img

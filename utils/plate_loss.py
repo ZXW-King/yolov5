@@ -3,7 +3,7 @@
 import torch
 import torch.nn as nn
 
-from utils.general import bbox_iou, iou_quad
+from utils.general import bbox_iou, iou_quad, iou_quad_threepoints
 from utils.torch_utils import is_parallel
 
 
@@ -195,9 +195,13 @@ class ComputePlateLoss:
         device = targets.device
         lcls, lbox, lobj, lmarkobj, lmark = torch.zeros(1, device=device), torch.zeros(1, device=device), torch.zeros(1, device=device), torch.zeros(1, device=device), torch.zeros(1, device=device)
         tcls, tbox, indices, anchors, tlandmarks, lmks_mask, lmobjks_mask = self.build_targets(p, targets)  # targets
+        self.grid_fm = [torch.zeros(1)] * len(anchors)
+        self.grid = [torch.zeros(1)] * len(anchors)
+        self.stride = torch.tensor([8., 16., 32.])
 
         # Losses
         for i, pi in enumerate(p):  # layer index, layer predictions
+            _, _, ny, nx, _ = p[i].shape
             b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
             tobj = torch.zeros_like(pi[..., 0], device=device)  # target obj
             tmarkobj = torch.zeros_like(pi[..., 0], device=device)  # target obj
@@ -235,8 +239,11 @@ class ComputePlateLoss:
 
                 lmark += self.landmarks_loss(plandmarks, tlandmarks[i], lmks_mask[i])
 
+                self.grid_fm[i] = self._make_grid(nx, ny).to(p[i].device)
+                self.grid[i] = self.grid_fm[i][:, :, gj, gi]
+
                 # landmarks conf
-                iou_landmark = iou_quad(plandmarks,tlandmarks[i])
+                iou_landmark = iou_quad_threepoints(plandmarks,tlandmarks[i], self.grid[i], self.stride[i])
                 tmarkobj[b, a, gj, gi] =  (1.0 - self.gr) + self.gr * iou_landmark.detach().clamp(0).type(tobj.dtype)
                 tmarkobj_mask[b, a, gj, gi] =  lmobjks_mask[i].detach().clamp(0).type(tobj.dtype)
                 # tmarkobj[b, a, gj, gi] = self.landmarks_obj(plandmarks, tlandmarks[i], lmks_mask[i]).detach().clamp(0).type(tmarkobj.dtype)
@@ -367,3 +374,7 @@ class ComputePlateLoss:
             landmarks.append(lks)
 
         return tcls, tbox, indices, anch, landmarks, lmks_mask, lks_mark_obj
+    @staticmethod
+    def _make_grid(nx=20, ny=20):
+        yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)])
+        return torch.stack((xv, yv), 2).view((1, 1, ny, nx, 2)).float()
