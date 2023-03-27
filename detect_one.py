@@ -100,7 +100,7 @@ def get_ther(landmarkspoints, class_num):
     return int(ther / math.pi * 180)
 
 
-def show_results(img, xywh, conf, landmarks, class_num):
+def show_results(img, xywh, conf, landmarks, class_num, keypoint_conf):
     h, w, c = img.shape
     tl = 2 or round(0.002 * (h + w) / 2) + 1  # line/font thickness
     x1 = int(xywh[0] * w - 0.5 * xywh[2] * w)
@@ -126,9 +126,9 @@ def show_results(img, xywh, conf, landmarks, class_num):
 
     tf = max(tl - 1, 1)  # font thickness
     # label = str(int(class_num)) + ': ' + str(conf)[:5] + '&:' +str(ther)
-    label = str(int(class_num)) + ': ' + str(conf)[:5]
+    label = str(int(class_num)) + ': ' + str(conf)[:5] + ' kconf： ' + str(keypoint_conf)[:5]
     print('label', str(int(class_num)) + ': ' + str(conf)[:5] + ' 航向角:' + str(ther))
-    cv2.putText(img, label, (x1, y1 - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
+    cv2.putText(img, label, (x1, y2 - 2), 0, tl / 3, [225, 255, 255], thickness=tf, lineType=cv2.LINE_AA)
     return img
 
 
@@ -205,10 +205,11 @@ def detect_one(model, image_path, device, output_dir):
             for j in range(det.size()[0]):
                 xywh = (xyxy2xywh(torch.tensor(det[j, :4]).view(1, 4)) / gn).view(-1).tolist()
                 conf = det[j, 4].cpu().numpy()
+                keypoint_conf = det[j, -2].cpu().numpy()
                 landmarks = (det[j, 15:23].view(1, 8) / gn_lks).view(-1).tolist()
                 class_num = np.argmax(det[j, 5:15].cpu().numpy())
 
-                orgimg = show_results(orgimg, xywh, conf, landmarks, class_num)
+                orgimg = show_results(orgimg, xywh, conf, landmarks, class_num, keypoint_conf)
 
     # Stream results
     print(f'Done. ({time.time() - t0:.3f}s)')

@@ -502,14 +502,25 @@ def bounding_rect_batch(points: torch.Tensor) -> torch.Tensor:
     width = max_x - min_x
     height = max_y - min_y
 
+    # width = torch.where(width == 0, torch.full_like(width, 1.), width)
+    # height = torch.where(height == 0, torch.full_like(height, 1.), height)
 
     # 返回左上角和右下角的坐标
     return torch.stack([x_center, y_center, width, height], dim=-1)
 
 # method4
+def distance(points1, points2):
+    return torch.sqrt(torch.sum((points1 - points2) ** 2, dim=2))
+
+def bounding_round(poly1, poly2):
+    # mask = distance(poly1, poly2) <= 5
+    # poly1[mask.long()] = poly2[mask.long()]
+    return poly1
+
 def iou_quad(quad1, quad2):
     device = quad1.device
         # Convert quadrilateral vertices to polygons
+    quad1 = quad1.to(torch.float32)
     poly1 = torch.stack([
             quad1[:, 0:2], quad1[:, 2:4], quad1[:, 4:6], quad1[:, 6:8]
         ], dim=1)
@@ -518,24 +529,27 @@ def iou_quad(quad1, quad2):
         ], dim=1)
 
     #外接矩形
-    poly1_bounding_01 = bounding_rect_batch(poly1[:, 0:2,:])
+    poly1_bounding_01 = bounding_round(poly1[:, 0:2,:], poly2[:, 0:2,:])
+    poly1_bounding_01 = bounding_rect_batch(poly1_bounding_01)
     poly2_bounding_01 = bounding_rect_batch(poly2[:, 0:2,:])
     iou_bounding_01 = bbox_iou(poly1_bounding_01.T, poly2_bounding_01, x1y1x2y2=False, CIoU=True)
 
-    poly1_bounding_12 = bounding_rect_batch(poly1[:, 1:3,:])
+    poly1_bounding_12 = bounding_round(poly1[:, 1:3,:], poly2[:, 1:3,:])
+    poly1_bounding_12 = bounding_rect_batch(poly1_bounding_12)
     poly2_bounding_12 = bounding_rect_batch(poly2[:, 1:3,:])
     iou_bounding_12 = bbox_iou(poly1_bounding_12.T, poly2_bounding_12, x1y1x2y2=False, CIoU=True)
 
-    poly1_bounding_23 = bounding_rect_batch(poly1[:, 2:4,:])
+    poly1_bounding_23 = bounding_round(poly1[:, 2:4,:], poly2[:, 1:3,:])
+    poly1_bounding_23 = bounding_rect_batch(poly1_bounding_23)
     poly2_bounding_23 = bounding_rect_batch(poly2[:, 2:4,:])
     iou_bounding_23 = bbox_iou(poly1_bounding_23.T, poly2_bounding_23, x1y1x2y2=False, CIoU=True)
 
-
-    poly1_bounding_30 = bounding_rect_batch(torch.stack([poly1[:, -1, :], poly1[:, 0, :]], dim=1))
+    poly1_bounding_30 = bounding_round(torch.stack([poly1[:, -1, :], poly1[:, 0, :]], dim=1), torch.stack([poly2[:, -1, :], poly2[:, 0, :]], dim=1))
+    poly1_bounding_30 = bounding_rect_batch(poly1_bounding_30)
     poly2_bounding_30 = bounding_rect_batch(torch.stack([poly2[:, -1, :], poly2[:, 0, :]], dim=1))
     iou_bounding_30 = bbox_iou(poly1_bounding_30.T, poly2_bounding_30, x1y1x2y2=False, CIoU=True)
 
-    iou = iou_bounding_01 + iou_bounding_12 + iou_bounding_23 + iou_bounding_30
+    iou = iou_bounding_01.clamp(0) + iou_bounding_12.clamp(0) + iou_bounding_23.clamp(0) + iou_bounding_30.clamp(0)
 
     return iou/4.0
 
@@ -730,7 +744,9 @@ def non_max_suppression_landmark(prediction, conf_thres=0.25, iou_thres=0.45, cl
                 pass
 
         # 默认输出
+
         output[xi] = x[i]
+
         # 继续对结果后处理，提升低阈值下性能（0.4）
 
         # 用于推理,降低框的重叠

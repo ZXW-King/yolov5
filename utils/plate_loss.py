@@ -170,7 +170,7 @@ class ComputePlateLoss:
         # Define criteria
         BCEcls = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['cls_pw']], device=device))
         BCEobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['obj_pw']], device=device))
-        BCElmobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['lmobj_pw']], device=device))
+        BCElmobj = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([h['lmobj_pw']], device=device), reduction="none")
 
         self.landmarks_loss = LandmarksLoss()
 
@@ -194,13 +194,14 @@ class ComputePlateLoss:
     def __call__(self, p, targets):  # predictions, targets, model
         device = targets.device
         lcls, lbox, lobj, lmarkobj, lmark = torch.zeros(1, device=device), torch.zeros(1, device=device), torch.zeros(1, device=device), torch.zeros(1, device=device), torch.zeros(1, device=device)
-        tcls, tbox, indices, anchors, tlandmarks, lmks_mask = self.build_targets(p, targets)  # targets
+        tcls, tbox, indices, anchors, tlandmarks, lmks_mask, lmobjks_mask = self.build_targets(p, targets)  # targets
 
         # Losses
         for i, pi in enumerate(p):  # layer index, layer predictions
             b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
             tobj = torch.zeros_like(pi[..., 0], device=device)  # target obj
             tmarkobj = torch.zeros_like(pi[..., 0], device=device)  # target obj
+            tmarkobj_mask = torch.zeros_like(pi[..., 0], device=device)  # target obj
 
             n = b.shape[0]  # number of targets
             #print('pi: ', pi.shape)
@@ -237,11 +238,13 @@ class ComputePlateLoss:
                 # landmarks conf
                 iou_landmark = iou_quad(plandmarks,tlandmarks[i])
                 tmarkobj[b, a, gj, gi] =  (1.0 - self.gr) + self.gr * iou_landmark.detach().clamp(0).type(tobj.dtype)
+                tmarkobj_mask[b, a, gj, gi] =  lmobjks_mask[i].detach().clamp(0).type(tobj.dtype)
                 # tmarkobj[b, a, gj, gi] = self.landmarks_obj(plandmarks, tlandmarks[i], lmks_mask[i]).detach().clamp(0).type(tmarkobj.dtype)
 
             #print('tobj: ',tobj)
             obji = self.BCEobj(pi[..., 4], tobj)
             mobji = self.BCElmobj(pi[..., -1], tmarkobj)
+            mobji = mobji.mean()
             lobj += obji * self.balance[i]  # obj loss
             lmarkobj += mobji * self.balance[i]
 
@@ -265,7 +268,7 @@ class ComputePlateLoss:
         # Build targets for compute_loss(), input targets(image,class,x,y,w,h)
         na, nt = self.na, targets.shape[0]  # number of anchors, targets
         #print('na: ', na , ' ---  ', 'nt: ', nt)
-        tcls, tbox, indices, anch, landmarks, lmks_mask = [], [], [], [], [], []
+        tcls, tbox, indices, anch, landmarks, lmks_mask, lmobjks_mask = [], [], [], [], [], [], []
         gain = torch.ones(15, device=targets.device)  # normalized to gridspace gain
         ai = torch.arange(na, device=targets.device).float().view(na, 1).repeat(1, nt)  # same as .repeat_interleave(nt)
         targets = torch.cat((targets.repeat(na, 1, 1), ai[:, :, None]), 2)  # append anchor indices
@@ -336,6 +339,9 @@ class ComputePlateLoss:
             #lks_mask = lks > 0
             #lks_mask = lks_mask.float()
             lks_mask = torch.where(lks < 0, torch.full_like(lks, 0.), torch.full_like(lks, 1.0))
+
+            lks_mark_obj = torch.sum(lks_mask, dim=1)
+            lks_mark_obj = torch.where(lks_mark_obj < 8, torch.full_like(lks_mark_obj, 0.), torch.full_like(lks_mark_obj, 1.0))
             # print(lks_mask)
             #for index in range(lks_mask.shape[1] // 2):
             #    lks[:, [index*2, index*2+1]] =   lks[:, [index*2, index*2+1]] - gij
@@ -354,9 +360,10 @@ class ComputePlateLoss:
                 lks_x2y2[lks_x2y2 > 0] = 0.2 * lks_x2y2[lks_x2y2 > 0]
                 lks_x2y2[lks_x2y2 < 0] = -1.0 * lks_x2y2[lks_x2y2 < 0]
 
-                new_lks_mask = lks_mask.repeat(1, 2) 
+                new_lks_mask = lks_mask.repeat(1, 2)
 
+            lmobjks_mask.append(lks_mark_obj)
             lmks_mask.append(lks_mask)
             landmarks.append(lks)
 
-        return tcls, tbox, indices, anch, landmarks, lmks_mask
+        return tcls, tbox, indices, anch, landmarks, lmks_mask, lks_mark_obj
