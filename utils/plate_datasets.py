@@ -796,7 +796,7 @@ def load_mosaic(self, index):
 
         if labels.size:
             labels[:, 1:] = xywhn2xyxy(labels[:, 1:], w, h, padw, padh)  # normalized xywh to pixel xyxy format
-            mask_landmarks = np.array(landmarks != -1, dtype=np.int32)
+            mask_landmarks = np.array(np.array(landmarks) != -1, dtype=np.int32)
             landmarks = [xyn2xy(x, w, h, padw, padh) for x in landmarks]
             landmarks = landmarks * mask_landmarks + mask_landmarks - 1
 
