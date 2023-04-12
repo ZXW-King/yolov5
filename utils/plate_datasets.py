@@ -787,25 +787,18 @@ def load_mosaic(self, index):
 
         # Labels
         labels, landmarks = self.labels[index].copy(), self.landmarks[index].copy()
-        # mask = np.zeros((200, 320, 3), dtype=np.uint8)
-        # landmarks2 = np.squeeze(np.round(np.array(landmarks)).astype(int))
-        # cv2.fillConvexPoly(mask, landmarks2/2.0, (0, 100, 255))  # 绘制 地面投影
-        # img4 = cv2.addWeighted(img, 1, mask, 0.5, 0)
-        #
-        # cv2.imwrite('./test_load.jpg', img4)
+        for index_s, landmark_s in enumerate(landmarks):
+            for k_s, point_s in enumerate(landmark_s):
+                x_s, y_s = point_s
+                if x_s < 0 or y_s < 0 or x_s > 1 or y_s > 1:
+                    # print(index,  ' -----  ', k)
+                    landmarks[index_s][k_s] = [-1, -1]
 
         if labels.size:
             labels[:, 1:] = xywhn2xyxy(labels[:, 1:], w, h, padw, padh)  # normalized xywh to pixel xyxy format
             mask_landmarks = np.array(landmarks != -1, dtype=np.int32)
             landmarks = [xyn2xy(x, w, h, padw, padh) for x in landmarks]
             landmarks = landmarks * mask_landmarks + mask_landmarks - 1
-
-        # mask = np.zeros((640, 640, 3), dtype=np.uint8)
-        # landmarks2 = np.squeeze(np.round(np.array(landmarks)).astype(int))
-        # cv2.fillConvexPoly(mask, landmarks2, (0, 100, 255))  # 绘制 地面投影
-        # img4 = cv2.addWeighted(img4, 1, mask, 0.5, 0)
-        #
-        # cv2.imwrite('./test_zuhe.jpg', img4)
 
         labels4.append(labels)
         landmarks4.extend(landmarks)
@@ -834,19 +827,6 @@ def load_mosaic(self, index):
                                        shear=self.hyp['shear'],
                                        perspective=self.hyp['perspective'],
                                        border=self.mosaic_border)  # border to remove
-    # mask = np.zeros((320, 320, 3), dtype=np.uint8)
-    # landmarks2 = np.squeeze(np.round(np.array(landmarks4[0])).astype(int))
-    # landmarks3 = np.squeeze(np.round(np.array(landmarks4[1])).astype(int))
-    # landmarks41 = np.squeeze(np.round(np.array(landmarks4[2])).astype(int))
-    # landmarks5= np.squeeze(np.round(np.array(landmarks4[3])).astype(int))
-    #
-    # cv2.fillConvexPoly(mask, landmarks2, (0, 100, 255))  # 绘制 地面投影
-    # cv2.fillConvexPoly(mask, landmarks3, (0, 100, 255))  # 绘制 地面投影
-    # cv2.fillConvexPoly(mask, landmarks41, (0, 100, 255))  # 绘制 地面投影
-    # cv2.fillConvexPoly(mask, landmarks5, (0, 100, 255))  # 绘制 地面投影
-    # img4 = cv2.addWeighted(img4, 1, mask, 0.5, 0)
-    #
-    # cv2.imwrite('./test_qiege.jpg', img4)
 
     return img4, labels4
 
