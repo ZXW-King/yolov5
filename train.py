@@ -372,7 +372,9 @@ def train(hyp, opt, device, tb_writer=None):
                 os.system('gsutil cp %s gs://%s/results/results%s.txt' % (results_file, opt.bucket, opt.name))
 
             # Log
-            tags = ['train/box_loss', 'train/obj_loss', 'train/cls_loss',  # train loss
+            # lbox, lobj, lcls, lmark, loss
+            # (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
+            tags = ['train/box_loss', 'train/obj_loss', 'train/cls_loss','train/lmark_loss',  # train loss
                     'metrics/precision', 'metrics/recall', 'metrics/mAP_0.5', 'metrics/mAP_0.5:0.95',
                     'val/box_loss', 'val/obj_loss', 'val/cls_loss',  # val loss
                     'x/lr0', 'x/lr1', 'x/lr2']  # params
