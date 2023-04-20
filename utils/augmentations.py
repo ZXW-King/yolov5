@@ -238,7 +238,7 @@ def cutout(im, labels, p=0.5):
     # Applies image cutout augmentation https://arxiv.org/abs/1708.04552
     if random.random() < p:
         h, w = im.shape[:2]
-        scales = [0.5] * 1 + [0.25] * 2 + [0.125] * 4 + [0.0625] * 8 + [0.03125] * 16  # image size fraction
+        scales = [0.25] * 1# + [0.25] * 2 + [0.125] * 4 + [0.0625] * 8 + [0.03125] * 16  # image size fraction
         for s in scales:
             mask_h = random.randint(1, int(h * s))  # create random masks
             mask_w = random.randint(1, int(w * s))
@@ -250,7 +250,8 @@ def cutout(im, labels, p=0.5):
             ymax = min(h, ymin + mask_h)
 
             # apply random color mask
-            im[ymin:ymax, xmin:xmax] = [random.randint(64, 191) for _ in range(3)]
+            # im[ymin:ymax, xmin:xmax] = [random.randint(64, 191) for _ in range(3)]
+            im[ymin:ymax, xmin:xmax] = [0, 0, 0]
 
             # return unobscured labels
             if len(labels) and s > 0.03:
