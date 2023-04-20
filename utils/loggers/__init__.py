@@ -47,6 +47,7 @@ class Loggers():
                      'metrics/precision', 'metrics/recall', 'metrics/mAP_0.5', 'metrics/mAP_0.5:0.95',  # metrics
                      'val/box_loss', 'val/obj_loss', 'val/cls_loss',  # val loss
                      'x/lr0', 'x/lr1', 'x/lr2']  # params
+        self.best_keys = ['best/epoch', 'best/precision', 'best/recall', 'best/mAP_0.5', 'best/mAP_0.5:0.95', ]
         for k in LOGGERS:
             setattr(self, k, None)  # init empty logger dictionary
         self.csv = True  # always log to csv
@@ -110,8 +111,29 @@ class Loggers():
             files = sorted(self.save_dir.glob('val*.jpg'))
             self.wandb.log({"Validation": [wandb.Image(str(f), caption=f.name) for f in files]})
 
-    def on_fit_epoch_end(self, vals, epoch, best_fitness, fi):
+    # def on_fit_epoch_end(self, vals, epoch, best_fitness, fi):
+    #     # Callback runs at the end of each fit (train+val) epoch
+    #     x = {k: v for k, v in zip(self.keys, vals)}  # dict
+    #     if self.csv:
+    #         file = self.save_dir / 'results.csv'
+    #         n = len(x) + 1  # number of cols
+    #         s = '' if file.exists() else (('%20s,' * n % tuple(['epoch'] + self.keys)).rstrip(',') + '\n')  # add header
+    #         with open(file, 'a') as f:
+    #             f.write(s + ('%20.5g,' * n % tuple([epoch] + vals)).rstrip(',') + '\n')
+    #
+    #     if self.tb:
+    #         for k, v in x.items():
+    #             self.tb.add_scalar(k, v, epoch)
+    #
+    #     if self.wandb:
+    #         self.wandb.log(x)
+    #         self.wandb.end_epoch(best_result=best_fitness == fi)
+
+    def on_fit_epoch_end(self, vals, epoch, best_fitness, fi, bn_weights=None):
         # Callback runs at the end of each fit (train+val) epoch
+        if bn_weights is not None:
+            self.keys.append('sparsity_rate')
+
         x = {k: v for k, v in zip(self.keys, vals)}  # dict
         if self.csv:
             file = self.save_dir / 'results.csv'
@@ -123,8 +145,14 @@ class Loggers():
         if self.tb:
             for k, v in x.items():
                 self.tb.add_scalar(k, v, epoch)
+            if bn_weights is not None:
+                self.tb.add_histogram('bn_weights/hist', bn_weights, epoch, bins='doane')
 
         if self.wandb:
+            if best_fitness == fi:
+                best_results = [epoch] + vals[3:7]
+                for i, name in enumerate(self.best_keys):
+                    self.wandb.wandb_run.summary[name] = best_results[i]  # log best results in the summary
             self.wandb.log(x)
             self.wandb.end_epoch(best_result=best_fitness == fi)
 
