@@ -101,7 +101,7 @@ def export_onnx(model, im, file, opset, train, dynamic, simplify, prefix=colorst
                           training=torch.onnx.TrainingMode.TRAINING if train else torch.onnx.TrainingMode.EVAL,
                           do_constant_folding=not train,
                           input_names=['images'],
-                          output_names=['output'],
+                          output_names=['layer1', 'layer2', 'layer3'],
                           dynamic_axes={'images': {0: 'batch', 2: 'height', 3: 'width'},  # shape(1,3,640,640)
                                         'output': {0: 'batch', 1: 'anchors'}  # shape(1,25200,85)
                                         } if dynamic else None)
@@ -356,7 +356,7 @@ def run(data=ROOT / 'data/coco128.yaml',  # 'dataset.yaml path'
     device = select_device(device)
     assert not (device.type == 'cpu' and half), '--half only compatible with GPU export, i.e. use --device 0'
     model = attempt_load(weights, map_location=device, inplace=True, fuse=True)  # load FP32 model
-    nc, names = model.nc, model.names  # number of classes, class names
+    # nc, names = model.nc, model.names  # number of classes, class names
 
     # Input
     gs = int(max(model.stride))  # grid size (max stride)
