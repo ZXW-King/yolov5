@@ -371,7 +371,9 @@ def train(hyp, opt, device, tb_writer=None):
             if len(opt.name) and opt.bucket:
                 os.system('gsutil cp %s gs://%s/results/results%s.txt' % (results_file, opt.bucket, opt.name))
 
-            # Log
+
+            # lbox, lobj, lcls, lmark, loss
+            # (mp, mr, map50, map, *(loss.cpu() / len(dataloader)).tolist()), maps, t
             tags = ['train/box_loss', 'train/obj_loss', 'train/lmobj_loss', 'train/cls_loss', 'train/lmark_loss',  # train loss
                     'metrics/precision', 'metrics/recall', 'metrics/mAP_0.5', 'metrics/mAP_0.5:0.95',
                     'val/box_loss', 'val/obj_loss', 'val/lmobj_loss', 'val/cls_loss', 'val/lmark_loss',  # val loss
