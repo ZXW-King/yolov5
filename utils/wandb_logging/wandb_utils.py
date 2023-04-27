@@ -61,7 +61,8 @@ class WandbLogger():
                                         project='YOLOv5' if opt.project == 'runs/train' else Path(opt.project).stem,
                                         name=name,
                                         job_type=job_type,
-                                        id=run_id) if not wandb.run else wandb.run
+                                        id=run_id,
+                                        mode='offline') if not wandb.run else wandb.run
             if self.job_type == 'Training':
                 if not opt.resume:
                     wandb_data_dict = self.check_and_upload_dataset(opt) if opt.upload_dataset else data_dict
