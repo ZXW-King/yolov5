@@ -323,16 +323,17 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
             # Sparsity Training
             if opt.bn_sparsity:
-                with amp.autocast(enabled=cuda):
-                    pred = model(imgs)  # forward
-                    loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
-                    if RANK != -1:
-                        loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
-                    if opt.quad:
-                        loss *= 4.
+                # with amp.autocast(enabled=False):
+                pred = model(imgs)  # forward
+                loss, loss_items = compute_loss(pred, targets.to(device))  # loss scaled by batch_size
+                if RANK != -1:
+                    loss *= WORLD_SIZE  # gradient averaged between devices in DDP mode
+                if opt.quad:
+                    loss *= 4.
 
                 # Backward
-                scaler.scale(loss).backward()
+                # scaler.scale(loss).backward()
+                loss.backward()
 
                 # From pytorch sliming, l1 norm add in bn weight(grad add sign(weight))
                 srtmp = opt.sparsity_rate * (1 - 0.9 * epoch / epochs)
@@ -345,8 +346,9 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
 
                 # Optimize
                 if ni - last_opt_step >= accumulate:
-                    scaler.step(optimizer)  # optimizer.step
-                    scaler.update()
+                    optimizer.step()
+                    # scaler.step(optimizer)  # optimizer.step
+                    # scaler.update()
                     optimizer.zero_grad()
                     if ema:
                         ema.update(model)
