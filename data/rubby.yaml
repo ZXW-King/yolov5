@@ -10,10 +10,9 @@
 # download command/URL (optional)
 
 # train and val data as 1) directory: path/images/, 2) file: path/images.txt, or 3) list: [path1/images/, path2/images/]
-train: /media/xin/data1/data/dirty_data/ALL/darknet/version3.0.0/train.txt  # 118287 images
-val: /media/xin/data1/data/dirty_data/ALL/darknet/version3.0.0/val.txt  # 5000 images
+train: /data1/VOC/dirtyDetect/darknet/version10.0.23/train.txt  # 118287 images
+val: /data1/VOC/dirtyDetect/darknet/version10.0.23/val.txt  # 5000 images
 #test: /mnt/project/AbbyProject/YOLOv5-Lite-1/YOLOv5-Lite-master/data/test500/test2012.txt  # 20288 of 40670 images, submit to https://competitions.codalab.org/competitions/20794
-
 # number of classes
 #nc: 12
 nc: 1
